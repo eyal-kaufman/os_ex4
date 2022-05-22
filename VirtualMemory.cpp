@@ -9,7 +9,8 @@
 word_t getFrame(uint64_t virtualAddress);
 uint64_t findAvailableFrame(word_t pageSwappedIn, uint64_t sourceFrame);
 uint64_t DFS(uint64_t currentFrame, unsigned int currentDepth, uint64_t &maxFrameIndex, uint64_t &maximalCyclicalNode,
-             unsigned int &maximalCyclicalDistance, word_t pageSwappedIn, word_t& pagePath, uint64_t &parentFrame, uint64_t sourceFrame, word_t &maximalNodePagePath);
+             unsigned int &maximalCyclicalDistance, word_t pageSwappedIn, word_t pagePath, uint64_t &refParentFrame,
+             uint64_t sourceFrame, word_t &maximalNodePagePath, uint64_t parentFrame);
 unsigned int minCyclicDistance(word_t pageSwappedIn, word_t pagePath);
 void deleteLinkToFrame(uint64_t  parentFrame, word_t pagePath);
 void initializeFrame(uint64_t frameAddress);
@@ -75,21 +76,21 @@ word_t getFrame(uint64_t virtualAddress) {
  * 3. when reaching a leaf, calculate the cyclical distance, and if (1,2) is false return the leaf with the maximal cyclical distance . evict the chosen frame
  */
 uint64_t findAvailableFrame(word_t pageSwappedIn, uint64_t sourceFrame) {
-    uint64_t root = 0, maximalCyclicalNode = 0, maxFrameIndex = 0, parentFrame= 0;
+    uint64_t root = 0, maximalCyclicalNode = 0, maxFrameIndex = 0, parentFrame= 0, tempParentFrame = 0;
     unsigned int currentDepth = 0, maximalCyclicalDistance = 0;
     word_t pagePath = 0, maximalNodePagePath = 0;
-    uint64_t availableFrame = DFS(root, currentDepth, maxFrameIndex, maximalCyclicalNode, maximalCyclicalDistance, pageSwappedIn, pagePath, parentFrame, sourceFrame, maximalNodePagePath);
+    uint64_t availableFrame = DFS(root, currentDepth, maxFrameIndex, maximalCyclicalNode, maximalCyclicalDistance, pageSwappedIn, pagePath, parentFrame, sourceFrame, maximalNodePagePath, tempParentFrame);
     // check if an empty table was found
     if (availableFrame > 0 && availableFrame != sourceFrame) {
-        deleteLinkToFrame(parentFrame, pagePath);
+        deleteLinkToFrame(parentFrame, maximalNodePagePath);
         return availableFrame;
     }
     if (maxFrameIndex + 1 < NUM_FRAMES)
     {
         return maxFrameIndex + 1;
     }
-    PMevict(maximalCyclicalNode, pagePath);
-    deleteLinkToFrame(parentFrame, pagePath);
+    PMevict(maximalCyclicalNode, maximalNodePagePath);
+    deleteLinkToFrame(parentFrame, maximalNodePagePath);
     return maximalCyclicalNode;
 }
 
@@ -106,38 +107,45 @@ void deleteLinkToFrame(uint64_t  parentFrame, word_t pagePath)
  *
  */
 uint64_t DFS(uint64_t currentFrame, unsigned int currentDepth, uint64_t &maxFrameIndex, uint64_t &maximalCyclicalNode,
-             unsigned int &maximalCyclicalDistance, word_t pageSwappedIn, word_t &pagePath, uint64_t &parentFrame, uint64_t sourceFrame,  word_t &maximalNodePagePath){
+             unsigned int &maximalCyclicalDistance, word_t pageSwappedIn, word_t pagePath, uint64_t& refParentFrame,
+             uint64_t sourceFrame,  word_t &maximalNodePagePath, uint64_t parentFrame){
     maxFrameIndex = maxFrameIndex < currentFrame ? currentFrame : maxFrameIndex;
     if (currentDepth == TABLES_DEPTH) {
+
         unsigned int cyclicDistance = minCyclicDistance(pageSwappedIn, pagePath);
         if ( maximalCyclicalDistance < cyclicDistance){
             maximalCyclicalDistance = cyclicDistance;
             maximalCyclicalNode = currentFrame;
             maximalNodePagePath = pagePath;
+            refParentFrame = parentFrame;
         }
         return 0;
     }
     word_t currentRead;
     uint64_t tempFrame;
     bool isEmptyTable = true;
+    word_t tmpPath = 0;
     for (unsigned int offset = 0; offset < PAGE_SIZE; offset++)
     {
         PMread(currentFrame * PAGE_SIZE + offset, &currentRead);
         if (currentRead != 0){
             isEmptyTable = false;
-//            unsigned int newPagePath = (offset << ((TABLES_DEPTH - currentDepth - 1) * OFFSET_WIDTH)) + pagePath;
-            pagePath = (offset << ((TABLES_DEPTH - currentDepth - 1) * OFFSET_WIDTH)) + pagePath;
-            parentFrame = currentFrame;
+            tmpPath = (offset << ((TABLES_DEPTH - currentDepth - 1) * OFFSET_WIDTH));
             tempFrame = DFS(currentRead, currentDepth + 1, maxFrameIndex,
-                            maximalCyclicalNode, maximalCyclicalDistance, pageSwappedIn, pagePath, parentFrame, sourceFrame, maximalNodePagePath);
+                            maximalCyclicalNode, maximalCyclicalDistance, pageSwappedIn, pagePath + tmpPath, refParentFrame, sourceFrame, maximalNodePagePath, currentFrame);
             if (tempFrame != 0)
             {
                 return tempFrame;
             }
         }
     }
-    bool notEmpty = !isEmptyTable;
-    return notEmpty || currentFrame == sourceFrame ? 0: currentFrame;
+
+    if (isEmptyTable && currentFrame != sourceFrame) {
+        maximalNodePagePath = pagePath >> ((TABLES_DEPTH - currentDepth) * OFFSET_WIDTH);
+        refParentFrame = parentFrame;
+        return currentFrame;
+    }
+    else return 0;
 }
 
 /*
