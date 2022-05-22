@@ -1,4 +1,3 @@
-#pragma once
 
 #include <algorithm>
 #include "MemoryConstants.h"
@@ -14,6 +13,7 @@ uint64_t DFS(uint64_t currentFrame, unsigned int currentDepth, uint64_t &maxFram
 unsigned int minCyclicDistance(word_t pageSwappedIn, word_t pagePath);
 void deleteLinkToFrame(uint64_t  parentFrame, word_t pagePath);
 void initializeFrame(uint64_t frameAddress);
+unsigned int calcAbs(word_t pageSwappedIn, word_t pagePath);
 
 //---------------------------------------------------Implementation---------------------------------------------------//
 
@@ -32,6 +32,10 @@ void VMinitialize(){
  * address for any reason)
  */
 int VMread(uint64_t virtualAddress, word_t* value) {
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE || virtualAddress < 0)
+    {
+        return 0;
+    }
     uint64_t offset = virtualAddress & ((1LL << OFFSET_WIDTH) -1);
     word_t finalFrame = getFrame(virtualAddress);
     uint64_t finalAddress = finalFrame * PAGE_SIZE + offset;
@@ -153,8 +157,17 @@ uint64_t DFS(uint64_t currentFrame, unsigned int currentDepth, uint64_t &maxFram
  */
 unsigned int minCyclicDistance(word_t pageSwappedIn, word_t pagePath)
 {
-    unsigned int lhs = NUM_PAGES - std::abs(pageSwappedIn - pagePath), rhs = std::abs(pageSwappedIn - pagePath);
+    unsigned int lhs = NUM_PAGES - calcAbs(pageSwappedIn, pagePath), rhs = calcAbs(pageSwappedIn, pagePath);
     return (lhs < rhs)? lhs: rhs;
+}
+
+unsigned int calcAbs(word_t pageSwappedIn, word_t pagePath)
+{
+    if (pageSwappedIn - pagePath < 0)
+    {
+        return -(pageSwappedIn - pagePath);
+    }
+    return pageSwappedIn - pagePath;
 }
 
 /* Writes a word to the given virtual address.
@@ -164,6 +177,10 @@ unsigned int minCyclicDistance(word_t pageSwappedIn, word_t pagePath)
  * address for any reason)
  */
 int VMwrite(uint64_t virtualAddress, word_t value) {
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE || virtualAddress < 0)
+    {
+        return 0;
+    }
     uint64_t offset = virtualAddress & ((1LL << OFFSET_WIDTH) -1);
     word_t finalFrame = getFrame(virtualAddress);
     uint64_t finalAddress = finalFrame * PAGE_SIZE + offset;
